@@ -7,6 +7,7 @@ Use this file as a working checklist during implementation and demo prep.
 - Core TODO implementation: completed
 - Tracing status: enabled (health endpoint shows tracing_enabled = true)
 - Langfuse ingestion status: OK (trace count increased after load test)
+- Alert drill status: completed for rag_slow, tool_fail, cost_spike with measured metrics
 - Remaining work: capture and save all required screenshots to docs/evidence
 
 ## 1. Langfuse key setup (for trace evidence)
@@ -78,6 +79,7 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 - [ ] Runbook link attached in report
 	- Example: docs/alerts.md
 	- Suggested link text in report: docs/alerts.md
+	- Tested scenarios summary is documented in docs/alerts.md section 4.
 
 ## 3. Optional evidence (bonus)
 - [ ] Incident before/after fix comparison
@@ -117,6 +119,30 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 - [ ] TOTAL_TRACES_COUNT updated (set from Langfuse trace list screenshot)
 - [ ] All required screenshot paths replaced with real files
 - [ ] Incident RCA includes concrete evidence (trace id or log lines)
+
+## 8. Alert drill evidence values (copy into report)
+Use these values in the Incident Response section and alert analysis:
+
+1. Baseline:
+	- latency_p95 = 152.0 ms
+	- avg_cost_usd = 0.0020
+	- total_cost_usd = 0.0197
+	- tokens_out_total = 1245
+	- error_breakdown = {}
+
+2. rag_slow enabled:
+	- latency_p95 = 2654.0 ms
+	- Observation: latency spike confirmed.
+
+3. tool_fail enabled:
+	- error_breakdown = {"RuntimeError": 10}
+	- Observation: error-rate incident confirmed.
+
+4. cost_spike enabled:
+	- avg_cost_usd = 0.0035
+	- total_cost_usd = 0.1058
+	- tokens_out_total = 6851
+	- Observation: cost and token spike confirmed.
 
 ## 7. What to fill in blueprint-template now
 1. VALIDATE_LOGS_FINAL_SCORE: 100/100
