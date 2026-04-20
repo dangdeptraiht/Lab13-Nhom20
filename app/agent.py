@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 from . import metrics
@@ -28,30 +29,44 @@ class LabAgent:
     @observe()
     def run(self, user_id: str, feature: str, session_id: str, message: str) -> AgentResult:
         started = time.perf_counter()
-        docs = retrieve(message)
+        with self._span("retrieve_docs"):
+            docs = retrieve(message)
+
         prompt = f"Feature={feature}\nDocs={docs}\nQuestion={message}"
-        response = self.llm.generate(prompt)
-        quality_score = self._heuristic_quality(message, response.text, docs)
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
+        with self._span("llm_generate"):
+            response = self.llm.generate(prompt)
+
+        with self._span("quality_scoring"):
+            quality_score = self._heuristic_quality(message, response.text, docs)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
 
         langfuse_context.update_current_trace(
             user_id=hash_user_id(user_id),
             session_id=session_id,
             tags=["lab", feature, self.model],
         )
-        langfuse_context.update_current_observation(
-            metadata={"doc_count": len(docs), "query_preview": summarize_text(message)},
-            usage_details={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
+        langfuse_context.update_current_span(
+            input=summarize_text(message),
+            output=summarize_text(response.text),
+            metadata={
+                "doc_count": len(docs),
+                "query_preview": summarize_text(message),
+                "usage": {
+                    "input": response.usage.input_tokens,
+                    "output": response.usage.output_tokens,
+                },
+            },
         )
 
-        metrics.record_request(
-            latency_ms=latency_ms,
-            cost_usd=cost_usd,
-            tokens_in=response.usage.input_tokens,
-            tokens_out=response.usage.output_tokens,
-            quality_score=quality_score,
-        )
+        with self._span("record_metrics"):
+            metrics.record_request(
+                latency_ms=latency_ms,
+                cost_usd=cost_usd,
+                tokens_in=response.usage.input_tokens,
+                tokens_out=response.usage.output_tokens,
+                quality_score=quality_score,
+            )
 
         return AgentResult(
             answer=response.text,
@@ -61,6 +76,12 @@ class LabAgent:
             cost_usd=cost_usd,
             quality_score=quality_score,
         )
+
+    def _span(self, name: str):
+        start_span = getattr(langfuse_context, "start_as_current_span", None)
+        if callable(start_span):
+            return start_span(name=name)
+        return nullcontext()
 
     def _estimate_cost(self, tokens_in: int, tokens_out: int) -> float:
         input_cost = (tokens_in / 1_000_000) * 3
